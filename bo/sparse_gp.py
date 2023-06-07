@@ -12,8 +12,17 @@ from sparse_gp_theano_internal import *
 import scipy.stats    as sps
 import scipy.optimize as spo
 import numpy as np
-import sys
 import time
+import subprocess
+
+def remove():
+    tput = subprocess.Popen(['tput','cols'], stdout=subprocess.PIPE)
+    cols = int(tput.communicate()[0].strip())
+    print(' '*cols, end='\r')
+
+def print_flush(string: str):
+    remove()
+    print(string, end='\r', flush=True)
 
 def casting(x):
     return np.array(x).astype(theano.config.floatX)
@@ -201,8 +210,7 @@ class SparseGP:
         self.input_vars.set_value(input_vars[ selected_points, : ])
         self.original_training_targets.set_value(training_targets[ selected_points, : ])
 
-        print('Initializing network')
-        sys.stdout.flush()
+        print_flush('Initializing network')
         self.setForTraining()
         self.initialize()
 
@@ -214,16 +222,15 @@ class SparseGP:
 
         all_params = self.get_params()
 
-        print('Compiling adam updates')
-        sys.stdout.flush()
+        print_flush('Compiling adam updates')
 
         process_minibatch_adam = theano.function([ X, Z, y ], -e, updates = adam_theano(-e, all_params, learning_rate), \
             givens = { self.input_means: X, self.input_vars: Z, self.original_training_targets: y })
 
         # Main loop of the optimization
 
-        print('Training')
-        sys.stdout.flush()
+        print_flush('Training')
+
         n_batches = int(np.ceil(1.0 * n_data_points / minibatch_size))
         for j in range(max_iterations):
             suffle = np.random.choice(n_data_points, n_data_points, replace = False)
@@ -240,15 +247,13 @@ class SparseGP:
                 current_energy = process_minibatch_adam(minibatch_data_means, minibatch_data_vars, minibatch_targets)
                 elapsed_time = time.time() - start
 
-                print('Epoch: {}, Mini-batch: {} of {} - Energy: {} Time: {}'.format(j, i, n_batches, current_energy, elapsed_time))
-                sys.stdout.flush()
+                print_flush('Epoch: {}, Mini-batch: {} of {} - Energy: {} Time: {}'.format(j, i, n_batches, current_energy, elapsed_time))
 
             pred, uncert = self.predict(input_means_test, input_vars_test)
             test_error = np.sqrt(np.mean((pred - test_targets)**2))
             test_ll = np.mean(sps.norm.logpdf(pred - test_targets, scale = np.sqrt(uncert)))
 
-            print('Test error: {} Test ll: {}'.format(test_error, test_ll))
-            sys.stdout.flush()
+            print_flush('Test error: {} Test ll: {}'.format(test_error, test_ll))
         
             pred = np.zeros((0, 1))
             uncert = np.zeros((0, uncert.shape[ 1 ]))
@@ -262,8 +267,7 @@ class SparseGP:
             training_error = np.sqrt(np.mean((pred - training_targets)**2))
             training_ll = np.mean(sps.norm.logpdf(pred - training_targets, scale = np.sqrt(uncert)))
      
-            print('Train error: {} Train ll: {}'.format(training_error, training_ll))
-            sys.stdout.flush()
+            print_flush('Train error: {} Train ll: {}'.format(training_error, training_ll))
 
     def get_incumbent(self, grid, lower, upper):
         
