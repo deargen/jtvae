@@ -14,33 +14,28 @@ import torch
 import torch.nn as nn
 from mol_gen.models.JT_VAE.jtnn import create_var, JTNNVAE, Vocab
 
-from optparse import OptionParser
+from argparse import ArgumentParser
+
+from sascorer import SAScorer
+import networkx as nx
+from rdkit.Chem import rdmolops
 
 lg = rdkit.RDLogger.logger() 
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
-# We define the functions used to load and save objects
-def save_object(obj, filename):
-    result = pickle.dumps(obj)
-    with gzip.GzipFile(filename, 'wb') as dest: dest.write(result)
-    dest.close()
-
-def load_object(filename):
-    with gzip.GzipFile(filename, 'rb') as source: result = source.read()
-    ret = pickle.loads(result)
-    source.close()
-    return ret
-
-parser = OptionParser()
-parser.add_option("-v", "--vocab", dest="vocab_path")
-parser.add_option("-m", "--model", dest="model_path")
-parser.add_option("-o", "--save_dir", dest="save_dir")
-parser.add_option("-f", "--features", dest="features_path")
-parser.add_option("-w", "--hidden", dest="hidden_size", default=200)
-parser.add_option("-l", "--latent", dest="latent_size", default=56)
-parser.add_option("-d", "--depth", dest="depth", default=3)
-parser.add_option("-r", "--seed", dest="random_seed", default=None)
-opts,args = parser.parse_args()
+parser = ArgumentParser()
+parser.add_argument("-v", "--vocab", dest="vocab_path", required=True)
+parser.add_argument("-m", "--model", dest="model_path", required=True)
+parser.add_argument("-o", "--save_dir", dest="save_dir", required=True)
+parser.add_argument("-f", "--features", dest="features_path", required=True)
+parser.add_argument("-s", "--sascorer", dest="sascorer_path", required=True)
+parser.add_argument("-w", "--hidden", dest="hidden_size", default=200)
+parser.add_argument("-l", "--latent", dest="latent_size", default=56)
+parser.add_argument("-d", "--depth", dest="depth", default=3)
+parser.add_argument("-r", "--seed", dest="random_seed", default=None)
+parser.add_argument("-i", "--iteration", dest="iteration", default=5)
+parser.add_argument("-n", "--num_per_iter", dest="num_per_iter", default=60)
+opts = parser.parse_args()
 
 vocab = [x.strip("\r\n ") for x in open(opts.vocab_path)] 
 vocab = Vocab(vocab)
@@ -53,6 +48,9 @@ random_seed = int(opts.random_seed)
 model = JTNNVAE(vocab, hidden_size, latent_size, depth)
 model.load_state_dict(torch.load(opts.model_path))
 model = model.cuda()
+
+# initialize the SA scorer
+sascorer = SAScorer(opts.sascorer_path)
 
 # We load the random seed
 np.random.seed(random_seed)
@@ -81,8 +79,11 @@ SA_scores_normalized = (np.array(SA_scores) - np.mean(SA_scores)) / np.std(SA_sc
 logP_values_normalized = (np.array(logP_values) - np.mean(logP_values)) / np.std(logP_values)
 cycle_scores_normalized = (np.array(cycle_scores) - np.mean(cycle_scores)) / np.std(cycle_scores)
 
+# save directory
+os.makedirs(opts.save_dir, exist_ok = True)
+
 iteration = 0
-while iteration < 5:
+while iteration < opts.iteration:
     # We fit the GP
     np.random.seed(iteration * random_seed)
     M = 500
@@ -102,10 +103,10 @@ while iteration < 5:
     print('Train ll: ', trainll)
 
     # We pick the next 60 inputs
-    next_inputs = sgp.batched_greedy_ei(60, np.min(X_train, 0), np.max(X_train, 0))
+    next_inputs = sgp.batched_greedy_ei(opts.num_per_iter, np.min(X_train, 0), np.max(X_train, 0))
     valid_smiles = []
     new_features = []
-    for i in range(60):
+    for i in range(opts.num_per_iter):
         all_vec = next_inputs[i].reshape((1,-1))
         tree_vec,mol_vec = np.hsplit(all_vec, 2)
         tree_vec = create_var(torch.from_numpy(tree_vec).float())
@@ -116,15 +117,8 @@ while iteration < 5:
             new_features.append(all_vec)
     
     print(len(valid_smiles), "molecules are found")
-    valid_smiles = valid_smiles[:50]
-    new_features = next_inputs[:50]
     new_features = np.vstack(new_features)
-    os.makedirs(opts.save_dir, exist_ok = True)
-    save_object(valid_smiles, opts.save_dir + "/valid_smiles{}.dat".format(iteration))
-
-    import sascorer
-    import networkx as nx
-    from rdkit.Chem import rdmolops
+    torch.save(valid_smiles, opts.save_dir + "/valid_smiles{}.pt".format(iteration))
 
     scores = []
     for i in range(len(valid_smiles)):
@@ -148,11 +142,7 @@ while iteration < 5:
 
         score = current_SA_score_normalized + current_log_P_value_normalized + current_cycle_score_normalized
         scores.append(-score) #target is always minused
-
-    print(valid_smiles)
-    print(scores) 
-
-    save_object(scores, opts.save_dir + "/scores{}.dat".format(iteration))
+    torch.save(scores, opts.save_dir + "/scores{}.pt".format(iteration))
 
     if len(new_features) > 0:
         X_train = np.concatenate([ X_train, new_features ], 0)

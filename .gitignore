@@ -3,3 +3,4 @@ processed/
 *.json
 *.ipynb
 tmp/
+result*/

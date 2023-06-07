@@ -14,6 +14,7 @@ import scipy.optimize as spo
 import numpy as np
 import time
 import subprocess
+from tqdm.auto import tqdm
 
 def remove():
     tput = subprocess.Popen(['tput','cols'], stdout=subprocess.PIPE)
@@ -315,17 +316,13 @@ class SparseGP:
 
         # We optimize the ei in a greedy manner
 
-        for i in range(1, q):
+        for i in tqdm(range(1, q), desc = 'Batched greedy EI'):
 
             new_point = global_optimization(grid, lower, upper, function_grid, function_scalar, function_scalar_gradient)[ 0 ]
             X_numpy = casting(np.concatenate([ X_numpy, new_point ], 0))
             randomness_numpy = casting(0 * np.random.randn(X_numpy.shape[ 0 ], n_samples).astype(theano.config.floatX))
             X.set_value(X_numpy)
             randomness.set_value(randomness_numpy)
-            print(i, X_numpy)
 
         m, v = self.predict(X_numpy, 0 * X_numpy)
-    
-        print("Predictive mean at selected points:\n", m)
-
         return X_numpy
