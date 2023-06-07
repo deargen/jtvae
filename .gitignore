@@ -1,3 +1,5 @@
 *.pyc
 processed/
 *.json
+*.ipynb
+tmp/

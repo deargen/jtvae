@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 import numpy as np
 from mol_gen.models.JT_VAE.jtnn import *
 import networkx as nx
+import os
 
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
@@ -86,18 +87,18 @@ for i in tqdm(range(0, len(smiles), batch_size), desc="Calculating latent points
     batch = smiles[i : i + batch_size]
     mol_vec = model.encode_latent_mean(batch)
     latent_points.append(mol_vec.data.cpu().numpy())
-
-# We store the results
 latent_points = np.vstack(latent_points)
-np.savetxt("latent_features.txt", latent_points)
-torch.save(latent_points, "latent_features.pt")
 
 targets = SA_scores_normalized + logP_values_normalized + cycle_scores_normalized
-np.savetxt("targets.txt", targets)
-torch.save(targets, "targets.pt")
-np.savetxt("logP_values.txt", np.array(logP_values))
-torch.save(logP_values, "logP_values.pt")
-np.savetxt("SA_scores.txt", np.array(SA_scores))
-torch.save(SA_scores, "SA_scores.pt")
-np.savetxt("cycle_scores.txt", np.array(cycle_scores))
-torch.save(cycle_scores, "cycle_scores.pt")
+
+
+# We store the results
+save_dict = {
+    "smiles": smiles_rdkit,
+    "latent_points": latent_points,
+    "targets": targets,
+    "logP_values": logP_values,
+    "SA_scores": SA_scores,
+    "cycle_scores": cycle_scores,
+}
+torch.save(save_dict, "latent_label_dict.pt")

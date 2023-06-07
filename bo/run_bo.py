@@ -3,6 +3,7 @@ import gzip
 from sparse_gp import SparseGP
 import scipy.stats as sps
 import numpy as np
+import os
 import os.path
 
 import rdkit
@@ -11,7 +12,7 @@ from rdkit.Chem import Descriptors
 
 import torch
 import torch.nn as nn
-from jtnn import create_var, JTNNVAE, Vocab
+from mol_gen.models.JT_VAE.jtnn import create_var, JTNNVAE, Vocab
 
 from optparse import OptionParser
 
@@ -34,6 +35,7 @@ parser = OptionParser()
 parser.add_option("-v", "--vocab", dest="vocab_path")
 parser.add_option("-m", "--model", dest="model_path")
 parser.add_option("-o", "--save_dir", dest="save_dir")
+parser.add_option("-f", "--features", dest="features_path")
 parser.add_option("-w", "--hidden", dest="hidden_size", default=200)
 parser.add_option("-l", "--latent", dest="latent_size", default=56)
 parser.add_option("-d", "--depth", dest="depth", default=3)
@@ -56,8 +58,9 @@ model = model.cuda()
 np.random.seed(random_seed)
 
 # We load the data (y is minued!)
-X = np.loadtxt('latent_features.txt')
-y = -np.loadtxt('targets.txt')
+latent_label_dict = torch.load(opts.features_path)
+X = latent_label_dict['latent_points']
+y = - latent_label_dict['targets']
 y = y.reshape((-1, 1))
 
 n = X.shape[ 0 ]
@@ -71,9 +74,9 @@ y_test = y[ permutation ][ np.int(np.round(0.9 * n)) : ]
 
 np.random.seed(random_seed)
 
-logP_values = np.loadtxt('logP_values.txt')
-SA_scores = np.loadtxt('SA_scores.txt')
-cycle_scores = np.loadtxt('cycle_scores.txt')
+logP_values = latent_label_dict['logP_values']
+SA_scores = latent_label_dict['SA_scores']
+cycle_scores = latent_label_dict['cycle_scores']
 SA_scores_normalized = (np.array(SA_scores) - np.mean(SA_scores)) / np.std(SA_scores)
 logP_values_normalized = (np.array(logP_values) - np.mean(logP_values)) / np.std(logP_values)
 cycle_scores_normalized = (np.array(cycle_scores) - np.mean(cycle_scores)) / np.std(cycle_scores)
@@ -116,6 +119,7 @@ while iteration < 5:
     valid_smiles = valid_smiles[:50]
     new_features = next_inputs[:50]
     new_features = np.vstack(new_features)
+    os.makedirs(opts.save_dir, exist_ok = True)
     save_object(valid_smiles, opts.save_dir + "/valid_smiles{}.dat".format(iteration))
 
     import sascorer
