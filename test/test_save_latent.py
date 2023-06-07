@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 import numpy as np
 from mol_gen.models.JT_VAE.jtnn import *
 from mol_gen.models.JT_VAE.bo.sascorer import SAScorer
-
+from numpy.testing import assert_array_equal
 
 class TestGenLatent(unittest.TestCase):
     def setUp(self):
@@ -55,14 +55,6 @@ class TestGenLatent(unittest.TestCase):
             )
     
     def test_latent_points(self):
-        latent_points = []
-        for i in tqdm(range(0, len(self.smiles), self.batch_size), desc="Calculating latent points"):
-            batch = self.smiles[i : i + self.batch_size]
-            mol_vec = self.model.encode_latent_mean(batch)
-            latent_points.append(mol_vec.data.cpu().numpy())
-        latent_points = np.vstack(latent_points)
-        np.savetxt("latent_features.txt", latent_points)
-        torch.save(latent_points, "latent_features.pt")
-
-
-
+        latent_features = np.loadtxt("latent_features.txt")
+        latent_features_torch = torch.load("latent_features.pt")
+        assert_array_equal(latent_features, latent_features_torch)
